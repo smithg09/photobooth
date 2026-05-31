@@ -1,6 +1,6 @@
 {
   "name": "flashback-booth",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A retro-style photobooth app built with Svelte and Vite.",
   "type": "module",
   "author": "",
@@ -15,7 +15,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/flashback-booth.git"
+    "url": "https://github.com/smithg09/photobooth"
   },
   "scripts": {
     "dev": "vite",

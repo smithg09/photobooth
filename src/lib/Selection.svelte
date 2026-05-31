@@ -1,1258 +1,1209 @@
 <script>
-  import { onDestroy } from 'svelte';
-  import { currentPage, selectedFilter, selectedFrame, photos, customEmoji, customColor, customText } from './store.js';
-  import { createMockPhotoDataUrls, generateStripDataUrl } from './strip-renderer.js';
+    import { onMount, onDestroy } from "svelte";
+    import {
+        createMockPhotoDataUrls,
+        generateStripDataUrl,
+    } from "./strip-renderer.js";
 
-  let video;
-  let canvas;
-  let fileInput;
-  let stream;
-  let countdownTimer;
-  let queuedTimeout;
+    export let go;
+    export let filter;
+    export let setFilter;
+    export let frameId;
+    export let setFrameId;
+    export let customEmoji;
+    export let setCustomEmoji;
+    export let customColor;
+    export let setCustomColor;
+    export let customText;
+    export let setCustomText;
+    export let setPhotos;
 
-  const frames = [
-    { id: 'film-strip', name: 'Film Strip', icon: 'ph-fill ph-film-strip', note: 'Analog perforations down both sides.' },
-    { id: 'custom', name: 'Custom', icon: 'ph-fill ph-smiley', note: 'Stamp your own favorite emoji along the frame edge!' },
-    { id: 'simple-white', name: 'Classic White', icon: 'ph-fill ph-app-window', note: 'Clean portrait strips with no decoration.' },
-    { id: 'simple-black', name: 'Noir', icon: 'ph-fill ph-app-window', note: 'Dark frame for dramatic high contrast looks.' },
-    { id: 'polaroid', name: 'Vintage', icon: 'ph-fill ph-camera', note: 'Warm paper tint with retro softness.' },
-    { id: 'hearts', name: 'Hearts', icon: 'ph-fill ph-heart', note: 'Playful accents around each shot.' },
-    { id: 'sparkles', name: 'Sparkles', icon: 'ph-fill ph-sparkle', note: 'Party-ready stars and highlights.' },
-    { id: 'sketchy', name: 'Sketchy', icon: 'ph-fill ph-pencil-simple', note: 'Hand-drawn border style for casual vibes.' },
-    { id: 'cyber', name: 'Cyber Glitch', icon: 'ph-fill ph-alien', note: 'Neon edges and dark sci-fi backdrop.' },
-    { id: 'floral', name: 'Botanical', icon: 'ph-fill ph-plant', note: 'Soft borders with tiny leaf accents.' },
-    { id: 'arcade', name: '8-Bit Arcade', icon: 'ph-fill ph-game-controller', note: 'Pixelated decorations and bright colors.' },
-    { id: 'postage', name: 'Postage Mail', icon: 'ph-fill ph-envelope-simple', note: 'Looks like rare vintage stamps.' },
-    { id: 'notepad', name: 'Grid Notepad', icon: 'ph-fill ph-notepad', note: 'Lined paper with casual scribbles.' },
-  ];
+    const FRAMES = [
+        {
+            id: "film-strip",
+            name: "Film Strip",
+            note: "Analog perforations down both sides.",
+            reaction: "Peak nostalgia. Arcade-night approved.",
+        },
+        {
+            id: "simple-white",
+            name: "Classic White",
+            note: "Clean portrait strips, no decoration.",
+            reaction: "Clean and timeless.",
+        },
+        {
+            id: "simple-black",
+            name: "Noir",
+            note: "Dark frame for dramatic, high-contrast looks.",
+            reaction: "Moody and cinematic.",
+        },
+        {
+            id: "polaroid",
+            name: "Vintage",
+            note: "Warm paper tint with retro softness.",
+            reaction: "Warm and dreamy. Instant throwback.",
+        },
+        {
+            id: "hearts",
+            name: "Hearts",
+            note: "Playful accents framing each shot.",
+            reaction: "Soft chaos. Date-night approved.",
+        },
+        {
+            id: "sparkles",
+            name: "Sparkles",
+            note: "Party-ready stars and highlights.",
+            reaction: "Party mode activated.",
+        },
+        {
+            id: "sketchy",
+            name: "Sketchy",
+            note: "Hand-drawn border for casual vibes.",
+            reaction: "Messy in the best way.",
+        },
+        {
+            id: "floral",
+            name: "Botanical",
+            note: "Soft borders with tiny leaf accents.",
+            reaction: "Fresh and gentle.",
+        },
+        {
+            id: "cyber",
+            name: "Cyber Glitch",
+            note: "Neon edges on a dark sci-fi backdrop.",
+            reaction: "Loud and electric.",
+        },
+        {
+            id: "arcade",
+            name: "8-Bit Arcade",
+            note: "Pixel decorations and bright colour.",
+            reaction: "High score energy.",
+        },
+        {
+            id: "postage",
+            name: "Postage",
+            note: "Looks like a rare vintage stamp.",
+            reaction: "First-class keepsake.",
+        },
+        {
+            id: "notepad",
+            name: "Grid Notepad",
+            note: "Lined paper with casual scribbles.",
+            reaction: "Sweet and scrappy.",
+        },
+        {
+            id: "custom",
+            name: "Custom",
+            note: "Stamp your own emoji along the edge.",
+            reaction: "Make it unmistakably yours.",
+        },
+    ];
 
-  const previewPlaceholders = createMockPhotoDataUrls(4);
+    const DELIGHT = {
+        preview: [
+            "Pick your frame, then run a quick rehearsal.",
+            "Tip: colour for party glow, B&W for album-cover mood.",
+            "Frame first, filter second, then lock your best pose.",
+        ],
+        camera: [
+            "Camera live. Hold steady between countdown beeps.",
+            "Every shot saves automatically — keep the energy up.",
+            "One serious face, one chaotic face, then repeat.",
+        ],
+        review: [
+            "Reorder the panels, then send it to the darkroom.",
+            "Happy with the order? Print to develop your strip.",
+            "Swap shots until the rhythm feels right.",
+        ],
+    };
 
-  let currentFrameIndex = 0;
-  let inlineMode = 'preview'; // preview | camera | review
-  let countdown = null;
-  let shooting = false;
-  let count = 0;
-  const totalShots = 4;
-  let flash = false;
-  let cameraReady = false;
-  let uploadThumbs = [];
-  let previewStripUrl = '';
-  let previewBuildToken = 0;
-  let delightLine = 'Pick your frame, then run a quick rehearsal.';
-  let delightTimer;
-  let delightIndex = 0;
+    const TOTAL = 4;
+    const MOCKS = createMockPhotoDataUrls(4);
 
-  const delightByMode = {
-    preview: [
-      'Pick your frame, then run a quick rehearsal.',
-      'Tip: Color for party glow, B&W for album-cover mood.',
-      'Frame first, filter second, then lock in your best pose.'
-    ],
-    camera: [
-      'Camera live. Hold steady between countdown beeps.',
-      'Every shot saves automatically, so keep the energy up.',
-      'Try one serious face, one chaotic face, then repeat.'
-    ],
-    upload: [
-      'Upload up to four shots and we will build a matching strip.',
-      'Landscape images are auto-cropped, so center your subject.',
-      'Need a different look? Pick new files anytime.'
-    ]
-  };
+    let frameIndex = Math.max(
+        0,
+        FRAMES.findIndex((f) => f.id === frameId),
+    );
+    let mode = "preview"; // preview | camera | review
+    let countdown = null;
+    let count = 0;
+    let showFlash = false;
+    let camReady = false;
+    let reviewPhotos = [];
+    let previewUrl = "";
+    let delight = DELIGHT.preview[0];
 
-  const frameReactions = {
-    'simple-white': 'Clean and timeless. Looks great in every room.',
-    'simple-black': 'Moody and cinematic. Perfect for dramatic faces.',
-    'film-strip': 'Peak nostalgia. Arcade-night approved.',
-    polaroid: 'Warm and dreamy. Instant throwback feel.',
-    hearts: 'Soft chaos. Good for date-night strips.',
-    sparkles: 'Party mode activated. Shine is guaranteed.',
-    sketchy: 'Messy in the best way. Very indie-zine.'
-  };
+    let videoEl;
+    let canvasEl;
+    let fileEl;
+    let replaceEl;
+    let replaceIndex = -1;
+    let streamRef = null;
+    let countTimer = null;
+    let queueTimer = null;
+    let shotsRef = [];
+    let delightTimer = null;
+    let previewAlive = false;
 
-  $selectedFrame = frames[currentFrameIndex].id;
-  $: activeFrame = frames[currentFrameIndex];
-  $: frameReaction = frameReactions[$selectedFrame] ?? 'Iconic choice.';
-  $: cameraTip =
-    inlineMode === 'camera'
-      ? count === 0
-        ? 'Opening shot: hold a confident pose for one beat.'
-        : count === totalShots - 1
-          ? 'Final shot. Give it the most expressive look.'
-          : 'Keep changing expressions so each panel feels different.'
-      : '';
+    $: frame = FRAMES[frameIndex];
+    $: modeLabel =
+        mode === "preview"
+            ? "Compose"
+            : mode === "camera"
+              ? "Camera session"
+              : "Review session";
+    $: camTip =
+        count === 0
+            ? "Opening shot — hold a confident pose."
+            : count === TOTAL - 1
+              ? "Final shot — give it your most expressive look."
+              : "Keep changing expressions so each panel feels different.";
 
-  $: {
-    clearInterval(delightTimer);
-    delightIndex = 0;
-    const lines = delightByMode[inlineMode] ?? delightByMode.preview;
-    delightLine = lines[delightIndex] ?? '';
-
-    if (lines.length > 1) {
-      delightTimer = setInterval(() => {
-        delightIndex = (delightIndex + 1) % lines.length;
-        delightLine = lines[delightIndex];
-      }, 2200);
-    }
-  }
-
-  $: if (inlineMode !== 'camera') {
-    const sourcePhotos = inlineMode === 'review' && uploadThumbs.length > 0
-      ? uploadThumbs
-      : previewPlaceholders;
-
-    // Depend explicitly on stores so preview updates dynamically
-    const currentFrame = $selectedFrame;
-    const currentFilter = $selectedFilter;
-    const currentEmoji = $customEmoji;
-    const currentColor = $customColor;
-    const currentText = $customText;
-    
-    const currentToken = ++previewBuildToken;
-
-    generateStripDataUrl({
-      photos: sourcePhotos,
-      selectedFilter: currentFilter,
-      selectedFrame: currentFrame,
-      customEmoji: currentEmoji,
-      customColor: currentColor,
-      footerLabel: currentText || 'PREVIEW'
-    })
-      .then((stripUrl) => {
-        if (currentToken !== previewBuildToken) return;
-        previewStripUrl = stripUrl ?? '';
-      })
-      .catch(() => {
-        if (currentToken !== previewBuildToken) return;
-        previewStripUrl = '';
-      });
-  }
-
-  function nextFrame() {
-    currentFrameIndex = (currentFrameIndex + 1) % frames.length;
-    $selectedFrame = frames[currentFrameIndex].id;
-  }
-
-  function prevFrame() {
-    currentFrameIndex = (currentFrameIndex - 1 + frames.length) % frames.length;
-    $selectedFrame = frames[currentFrameIndex].id;
-  }
-
-  function setFilter(filterId) {
-    $selectedFilter = filterId;
-  }
-
-  function goBack() {
-    stopCamera();
-    currentPage.set('landing');
-  }
-
-  async function startInlineCapture() {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      alert('Camera capture is not available in this browser.');
-      return;
-    }
-
-    inlineMode = 'camera';
-    uploadThumbs = [];
-    cameraReady = false;
-
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-        audio: false
-      });
-      video.srcObject = stream;
-      await video.play();
-      cameraReady = true;
-      startSequence();
-    } catch (err) {
-      stopCamera();
-      alert('Please allow camera access to take photos.');
-      inlineMode = 'preview';
-    }
-  }
-
-  function startSequence() {
-    shooting = true;
-    count = 0;
-    photos.set([]);
-    nextShot();
-  }
-
-  function nextShot() {
-    if (inlineMode !== 'camera') return;
-
-    if (count >= totalShots) {
-      finishToProcessing();
-      return;
+    $: {
+        // sync frameId up to parent when frame changes
+        if (frame) setFrameId(frame.id);
     }
 
-    countdown = 3;
-    clearInterval(countdownTimer);
-
-    countdownTimer = setInterval(() => {
-      countdown -= 1;
-      if (countdown <= 0) {
-        clearInterval(countdownTimer);
-        takePhoto();
-      }
-    }, 1000);
-  }
-
-  function takePhoto() {
-    if (!video?.videoWidth || !video?.videoHeight) {
-      return;
+    $: {
+        // rotate delight hint on mode change
+        clearInterval(delightTimer);
+        const lines = DELIGHT[mode] || DELIGHT.preview;
+        delight = lines[0];
+        let i = 0;
+        if (lines.length >= 2) {
+            delightTimer = setInterval(() => {
+                i = (i + 1) % lines.length;
+                delight = lines[i];
+            }, 2400);
+        }
     }
 
-    flash = true;
-    setTimeout(() => (flash = false), 180);
-
-    const context = canvas.getContext('2d');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    context.save();
-    context.translate(canvas.width, 0);
-    context.scale(-1, 1);
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    context.restore();
-
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-    photos.update((existing) => [...existing, dataUrl]);
-
-    count += 1;
-    clearTimeout(queuedTimeout);
-    if (count < totalShots) {
-      queuedTimeout = setTimeout(nextShot, 900);
-    } else {
-      queuedTimeout = setTimeout(finishToProcessing, 600);
+    $: {
+        // regenerate live preview when settings change
+        if (mode !== "camera") {
+            previewAlive = false;
+            const source =
+                mode === "review" && reviewPhotos.length > 0
+                    ? reviewPhotos
+                    : MOCKS;
+            const curFrame = frame;
+            const curFilter = filter;
+            const curEmoji = customEmoji;
+            const curColor = customColor;
+            const curText = customText;
+            previewAlive = true;
+            generateStripDataUrl({
+                photos: source,
+                selectedFilter: curFilter,
+                selectedFrame: curFrame.id,
+                customEmoji: curEmoji,
+                customColor: curColor,
+                footerLabel: curText || "PREVIEW",
+            })
+                .then((url) => {
+                    if (previewAlive) previewUrl = url || "";
+                })
+                .catch(() => {
+                    if (previewAlive) previewUrl = "";
+                });
+        }
     }
-  }
 
-  function stopCamera() {
-    cameraReady = false;
-    countdown = null;
-    shooting = false;
-    clearInterval(countdownTimer);
-    clearTimeout(queuedTimeout);
-
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      stream = null;
+    function changeFrame(dir) {
+        if (mode !== "preview") return;
+        frameIndex = (frameIndex + dir + FRAMES.length) % FRAMES.length;
     }
-  }
 
-  function finishToProcessing() {
-    stopCamera();
-    uploadThumbs = [...$photos];
-    inlineMode = 'review';
-  }
+    async function startCapture() {
+        if (!navigator.mediaDevices?.getUserMedia) {
+            alert("Camera capture is not available in this browser.");
+            return;
+        }
+        mode = "camera";
+        reviewPhotos = [];
+        camReady = false;
+        shotsRef = [];
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: "user",
+                },
+                audio: false,
+            });
+            streamRef = stream;
+            if (videoEl) {
+                videoEl.srcObject = stream;
+                await videoEl.play();
+            }
+            camReady = true;
+            count = 0;
+            setPhotos([]);
+            nextShot(0);
+        } catch {
+            stopCamera();
+            alert("Please allow camera access to take photos.");
+            mode = "preview";
+        }
+    }
 
-  function triggerUpload() {
-    inlineMode = 'upload';
-    stopCamera();
-    fileInput?.click();
-  }
+    function nextShot(currentCount) {
+        if (currentCount >= TOTAL) {
+            finishToReview();
+            return;
+        }
+        countdown = 3;
+        let c = 3;
+        clearInterval(countTimer);
+        countTimer = setInterval(() => {
+            c -= 1;
+            countdown = c;
+            if (c <= 0) {
+                clearInterval(countTimer);
+                takePhoto(currentCount);
+            }
+        }, 1000);
+    }
 
-  function readFile(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
+    function takePhoto(currentCount) {
+        const video = videoEl,
+            canvas = canvasEl;
+        if (!video?.videoWidth) return;
+        showFlash = true;
+        setTimeout(() => {
+            showFlash = false;
+        }, 180);
+        const ctx = canvas.getContext("2d");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.save();
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+        shotsRef = [...shotsRef, dataUrl];
+        const newCount = currentCount + 1;
+        count = newCount;
+        clearTimeout(queueTimer);
+        if (newCount < TOTAL)
+            queueTimer = setTimeout(() => nextShot(newCount), 900);
+        else queueTimer = setTimeout(finishToReview, 600);
+    }
+
+    function stopCamera() {
+        camReady = false;
+        countdown = null;
+        clearInterval(countTimer);
+        clearTimeout(queueTimer);
+        if (streamRef) {
+            streamRef.getTracks().forEach((t) => t.stop());
+            streamRef = null;
+        }
+    }
+
+    function finishToReview() {
+        stopCamera();
+        const shots = shotsRef.slice(0, TOTAL);
+        while (shots.length && shots.length < TOTAL)
+            shots.push(shots[shots.length - 1]);
+        reviewPhotos = shots;
+        setPhotos(shots);
+        mode = "review";
+    }
+
+    function triggerUpload() {
+        stopCamera();
+        fileEl?.click();
+    }
+
+    function readFileAsUrl(file) {
+        return new Promise((res, rej) => {
+            const r = new FileReader();
+            r.onload = (e) => res(e.target.result);
+            r.onerror = rej;
+            r.readAsDataURL(file);
+        });
+    }
+
+    async function onUpload(e) {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+        try {
+            const loaded = await Promise.all(
+                files.slice(0, 4).map(readFileAsUrl),
+            );
+            const norm = [...loaded];
+            while (norm.length < 4) norm.push(norm[norm.length - 1]);
+            reviewPhotos = norm;
+            setPhotos(norm);
+            mode = "review";
+        } catch {
+            alert("Could not load those images. Try different files.");
+        }
+        e.target.value = "";
+    }
+
+    function swap(a, b) {
+        if (
+            a < 0 ||
+            b < 0 ||
+            a >= reviewPhotos.length ||
+            b >= reviewPhotos.length
+        )
+            return;
+        const next = [...reviewPhotos];
+        [next[a], next[b]] = [next[b], next[a]];
+        reviewPhotos = next;
+        setPhotos(next);
+    }
+
+    function triggerReplace(i) {
+        replaceIndex = i;
+        replaceEl?.click();
+    }
+
+    async function onReplace(e) {
+        const file = e.target.files?.[0];
+        if (!file || replaceIndex < 0) return;
+        try {
+            const url = await readFileAsUrl(file);
+            const next = [...reviewPhotos];
+            next[replaceIndex] = url;
+            reviewPhotos = next;
+            setPhotos(next);
+        } catch { alert('Could not load that image. Try a different file.'); }
+        e.target.value = '';
+        replaceIndex = -1;
+    }
+
+    function reset() {
+        stopCamera();
+        reviewPhotos = [];
+        mode = "preview";
+    }
+
+    onDestroy(() => {
+        stopCamera();
+        clearInterval(delightTimer);
+        previewAlive = false;
     });
-  }
-
-  async function onUploadChange(event) {
-    try {
-      const selected = Array.from(event.target.files || []);
-      if (selected.length === 0) {
-        inlineMode = 'preview';
-        return;
-      }
-
-      const firstFour = selected.slice(0, 4);
-      const loaded = await Promise.all(firstFour.map((file) => readFile(file)));
-
-      const normalized = [...loaded];
-      while (normalized.length < 4) {
-        normalized.push(normalized[normalized.length - 1]);
-      }
-
-      uploadThumbs = normalized;
-      photos.set(normalized);
-      inlineMode = 'review';
-    } catch (error) {
-      alert('Could not load selected images. Please try different files.');
-      uploadThumbs = [];
-      inlineMode = 'preview';
-    }
-  }
-
-  function proceedToProcessing() {
-    if (uploadThumbs.length > 0) {
-      currentPage.set('processing');
-    }
-  }
-
-  function swapPhotos(indexA, indexB) {
-    if (indexA < 0 || indexA >= uploadThumbs.length || indexB < 0 || indexB >= uploadThumbs.length) return;
-    const newThumbs = [...uploadThumbs];
-    const temp = newThumbs[indexA];
-    newThumbs[indexA] = newThumbs[indexB];
-    newThumbs[indexB] = temp;
-    uploadThumbs = newThumbs;
-    photos.set(newThumbs);
-  }
-
-  function resetInlineArea() {
-    stopCamera();
-    uploadThumbs = [];
-    inlineMode = 'preview';
-    if (fileInput) fileInput.value = '';
-  }
-
-  onDestroy(() => {
-    stopCamera();
-    clearInterval(delightTimer);
-  });
 </script>
 
-<div class="selection-page">
-  <header class="top-row">
-    <button class="back-btn" on:click={goBack}>Back To Lobby</button>
-    <p class="mode-pill">Mode: {inlineMode === 'preview' ? 'Compose' : inlineMode === 'camera' ? 'Camera Session' : 'Review Session'}</p>
-  </header>
+<div class="screen studio page-enter">
+    <div class="studio-top">
+        <button
+            class="chip-btn"
+            on:click={() => {
+                stopCamera();
+                go("lobby");
+            }}>← Back to lobby</button
+        >
+        <span class="mode-tab">{modeLabel}</span>
+    </div>
 
-  <div class="selection-grid">
-    <section class="control-column">
-      <h2>Compose Your Strip</h2>
-      <p class="control-subtitle">Pick a frame style, choose color mode, then capture or upload four shots.</p>
-      <p class="delight-note" aria-live="polite">{delightLine}</p>
+    <div class="studio-grid">
+        <section class="console">
+            <h2 class="display-title">Compose your strip</h2>
+            <p class="serif-lead" style="font-size: 1.02rem;">
+                Pick a frame, choose your film, then capture or upload four
+                shots.
+            </p>
+            <p class="console-hint">{delight}</p>
 
-      <div class="frame-picker">
-        <button class="frame-nav" on:click={prevFrame} disabled={inlineMode !== 'preview'} aria-label="Previous frame">
-          <i class="ph-bold ph-caret-left"></i>
-        </button>
-        <div class="frame-info">
-          <p class="frame-name">{activeFrame.name}</p>
-          {#if activeFrame.id === 'custom'}
-             <div class="emoji-input-wrap">
-               <label for="emoji-input">Emoji:</label>
-               <input id="emoji-input" class="emoji-input" type="text" bind:value={$customEmoji} maxlength="5" />
-               <label for="color-input">Color:</label>
-               <input id="color-input" class="color-input" type="color" bind:value={$customColor} />
-             </div>
-          {:else}
-            <p class="frame-note">{activeFrame.note}</p>
-            <p class="frame-reaction">{frameReaction}</p>
-          {/if}
-        </div>
-        <button class="frame-nav" on:click={nextFrame} disabled={inlineMode !== 'preview'} aria-label="Next frame">
-          <i class="ph-bold ph-caret-right"></i>
-        </button>
-      </div>
-
-      <div class="filter-group" role="group" aria-label="Filter mode">
-        <button class="filter-btn" class:active={$selectedFilter === 'color'} on:click={() => setFilter('color')}>Color</button>
-        <button class="filter-btn" class:active={$selectedFilter === 'bw'} on:click={() => setFilter('bw')}>B&amp;W</button>
-      </div>
-
-      <div class="bottom-label-input">
-        <label for="bottom-text">Strip Label</label>
-        <input type="text" id="bottom-text" placeholder="Add custom text..." bind:value={$customText} maxlength="30" />
-      </div>
-
-      <div class="meta-row">
-        <p>4 shots per strip</p>
-        <p>Auto-save enabled</p>
-      </div>
-
-      <div class="actions">
-        {#if inlineMode === 'preview'}
-          <button class="action-btn action-primary" on:click={startInlineCapture}>Take Photos</button>
-          <button class="action-btn" on:click={triggerUpload}>Upload Images</button>
-        {:else if inlineMode === 'camera'}
-          <button class="action-btn" on:click={resetInlineArea}>Cancel Capture</button>
-        {:else if inlineMode === 'review'}
-          <div class="reorder-panel">
-            <p class="reorder-title">Reorder Shots</p>
-            <div class="reorder-track">
-              {#each uploadThumbs as thumb, index}
-                <div class="reorder-item">
-                  <img src={thumb} alt="thumbnail {index + 1}" class="tiny-thumb" />
-                  <span class="reorder-num">{index + 1}</span>
-                  <div class="reorder-actions">
-                    <button class="reorder-btn" disabled={index === 0} on:click={() => swapPhotos(index, index - 1)} aria-label="Move Before">
-                      <i class="ph-bold ph-caret-left"></i>
-                    </button>
-                    <button class="reorder-btn" disabled={index === uploadThumbs.length - 1} on:click={() => swapPhotos(index, index + 1)} aria-label="Move After">
-                      <i class="ph-bold ph-caret-right"></i>
-                    </button>
-                  </div>
+            <div class="dial">
+                <button
+                    class="dial-arrow"
+                    on:click={() => changeFrame(-1)}
+                    disabled={mode !== "preview"}
+                    aria-label="Previous frame">‹</button
+                >
+                <div class="dial-face">
+                    <p class="dial-name">{frame.name}</p>
+                    {#if frame.id === "custom"}
+                        <div class="dial-custom">
+                            <label
+                                >Emoji
+                                <input
+                                    class="emoji-in"
+                                    value={customEmoji}
+                                    maxlength="5"
+                                    on:input={(e) =>
+                                        setCustomEmoji(e.target.value)}
+                                />
+                            </label>
+                            <label
+                                >Colour
+                                <input
+                                    class="color-in"
+                                    type="color"
+                                    value={customColor}
+                                    on:input={(e) =>
+                                        setCustomColor(e.target.value)}
+                                />
+                            </label>
+                        </div>
+                    {:else}
+                        <p class="dial-note">{frame.note}</p>
+                        <p class="dial-reaction">{frame.reaction}</p>
+                    {/if}
                 </div>
-              {/each}
+                <button
+                    class="dial-arrow"
+                    on:click={() => changeFrame(1)}
+                    disabled={mode !== "preview"}
+                    aria-label="Next frame">›</button
+                >
             </div>
-          </div>
-          <button class="action-btn action-primary" on:click={proceedToProcessing} disabled={uploadThumbs.length === 0}>
-            Print Strip
-          </button>
-          <button class="action-btn" on:click={triggerUpload}>Upload Different</button>
-          <button class="action-btn" on:click={resetInlineArea}>Discard</button>
-        {/if}
-      </div>
-    </section>
 
-    <section class="preview-column">
-      <div class="frame-preview">
-        <header class="preview-top">
-          <span>Live Preview</span>
-          <span>{$selectedFilter === 'bw' ? 'B&W' : 'Color'}</span>
-        </header>
+            <div class="switch-row">
+                <span class="switch-label">Film</span>
+                <div class="film-toggle">
+                    <span
+                        class="knob"
+                        style="transform: {filter === 'bw'
+                            ? 'translateX(calc(100% + 2px))'
+                            : 'translateX(0)'}"
+                    ></span>
+                    <button
+                        class={filter === "color" ? "on" : ""}
+                        on:click={() => setFilter("color")}>Colour</button
+                    >
+                    <button
+                        class={filter === "bw" ? "on" : ""}
+                        on:click={() => setFilter("bw")}>B&amp;W</button
+                    >
+                </div>
+            </div>
 
-        <p class="preview-sticker" aria-hidden="true">Snap Magic</p>
+            <div class="field">
+                <label for="strip-label">Strip label</label>
+                <input
+                    id="strip-label"
+                    class="emboss-input"
+                    value={customText}
+                    maxlength="30"
+                    placeholder="Add custom text…"
+                    on:input={(e) => setCustomText(e.target.value)}
+                />
+            </div>
 
-        {#if inlineMode === 'camera'}
-          <div class="inline-camera">
-            <video bind:this={video} autoplay playsinline muted></video>
+            <div class="meta-chips">
+                <span>4 shots per strip</span>
+                <span>Auto-save enabled</span>
+            </div>
 
-            {#if !cameraReady}
-              <div class="overlay-note">Opening camera...</div>
-            {/if}
+            <div class="console-actions">
+                {#if mode === "preview"}
+                    <button
+                        class="btn btn--primary btn--capture"
+                        on:click={startCapture}>Take photos</button
+                    >
+                    <button class="btn btn--ghost" on:click={triggerUpload}
+                        >Upload images</button
+                    >
+                {:else if mode === "camera"}
+                    <button class="btn btn--ghost" on:click={reset}
+                        >Cancel capture</button
+                    >
+                {:else if mode === "review"}
+                    <div class="reorder">
+                        <p class="reorder-title">Reorder shots</p>
+                        <div class="reorder-track">
+                            {#each reviewPhotos as thumb, i}
+                                <div class="reorder-item">
+                                    <img src={thumb} alt="shot {i + 1}" />
+                                    <span class="n">{i + 1}</span>
+                                    <div class="reorder-actions">
+                                        <button
+                                            disabled={i === 0}
+                                            on:click={() => swap(i, i - 1)}
+                                            aria-label="Move earlier">‹</button
+                                        >
+                                        <button
+                                            disabled={i ===
+                                                reviewPhotos.length - 1}
+                                            on:click={() => swap(i, i + 1)}
+                                            aria-label="Move later">›</button
+                                        >
+                                        <button
+                                            class="replace-btn"
+                                            on:click={() => triggerReplace(i)}
+                                            aria-label="Replace photo"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 8.5V2M3.5 4L6 2L8.5 4M2 10.5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button
+                                        >
+                                    </div>
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+                    <button
+                        class="btn btn--primary btn--capture"
+                        on:click={() => go("darkroom")}
+                        disabled={reviewPhotos.length === 0}>Print strip</button
+                    >
+                    <button class="btn btn--ghost" on:click={triggerUpload}
+                        >Upload different</button
+                    >
+                    <button class="btn btn--ghost" on:click={reset}
+                        >Discard</button
+                    >
+                {/if}
+            </div>
+        </section>
 
-            {#if countdown !== null && countdown > 0}
-              <div class="countdown-overlay" aria-live="assertive">
-                <span>{countdown}</span>
-              </div>
-            {/if}
+        <section class="monitor">
+            <div class="monitor-bezel">
+                <div class="monitor-head">
+                    <span>Live preview</span>
+                    <span>{filter === "bw" ? "B&W" : "Colour"}</span>
+                </div>
+                <span class="monitor-sticker">Snap Magic</span>
 
-            {#if flash}
-              <div class="flash-overlay"></div>
-            {/if}
-          </div>
+                <div class="monitor-screen {mode === 'camera' ? 'live' : ''}">
+                    {#if mode === "camera"}
+                        <div class="cam">
+                            <video
+                                bind:this={videoEl}
+                                autoplay
+                                playsinline
+                                muted
+                            ></video>
+                            <div class="cam-brackets">
+                                <b class="tl"></b><b class="tr"></b><b
+                                    class="bl"
+                                ></b><b class="br"></b>
+                            </div>
+                            {#if !camReady}
+                                <div class="cam-overlay">
+                                    <span class="cam-note">Opening camera…</span
+                                    >
+                                </div>
+                            {/if}
+                            {#if countdown !== null && countdown > 0}
+                                {#key countdown}
+                                    <div class="cam-overlay">
+                                        <span class="count-ring"
+                                            >{countdown}</span
+                                        >
+                                    </div>
+                                {/key}
+                            {/if}
+                            {#if showFlash}
+                                <div class="flash"></div>
+                            {/if}
+                        </div>
+                    {:else if previewUrl}
+                        <img
+                            class="preview-strip"
+                            src={previewUrl}
+                            alt="Strip preview"
+                        />
+                    {:else}
+                        <span class="preview-loading">Building preview…</span>
+                    {/if}
+                </div>
 
-          <p class="camera-status">Photo {Math.min(count + 1, totalShots)} / {totalShots}</p>
-          <p class="camera-tip" aria-live="polite">{cameraTip}</p>
-        {:else}
-          <div class="strip-preview-shell">
-            {#if previewStripUrl}
-              <img src={previewStripUrl} alt="Generated strip preview" class="preview-strip-image" />
-            {:else}
-              <div class="preview-loading">Building preview...</div>
-            {/if}
-          </div>
+                <div class="monitor-foot">
+                    {#if mode === "camera"}
+                        Photo {Math.min(count + 1, TOTAL)} / {TOTAL} · {camTip}
+                    {:else if filter === "bw"}
+                        Monochrome keeps tones cinematic.
+                    {:else}
+                        Colour keeps every tone and accent.
+                    {/if}
+                </div>
+            </div>
+        </section>
+    </div>
 
-          {#if inlineMode === 'review' && uploadThumbs.length === 0}
-            <p class="upload-hint">Take photos or choose 4 images.</p>
-          {/if}
-        {/if}
-      </div>
-
-      <p class="preview-meta">
-        {$selectedFilter === 'bw' ? 'Monochrome mode keeps tones cinematic.' : 'Color mode keeps all tones and accents.'}
-      </p>
-    </section>
-  </div>
-
-  <canvas bind:this={canvas} style="display:none;"></canvas>
-  <input
-    bind:this={fileInput}
-    type="file"
-    accept="image/*"
-    multiple
-    on:change={onUploadChange}
-    style="display:none;"
-  />
+    <canvas bind:this={canvasEl} style="display:none"></canvas>
+    <input
+        bind:this={fileEl}
+        type="file"
+        accept="image/*"
+        multiple
+        on:change={onUpload}
+        style="display:none"
+    />
+    <input bind:this={replaceEl} type="file" accept="image/*" on:change={onReplace} style="display:none" />
 </div>
 
 <style>
-  .selection-page {
-    min-height: 100%;
-    display: grid;
-    gap: clamp(0.7rem, 1.9vw, 1.2rem);
-    padding-block: clamp(0.6rem, 1.5vw, 1rem);
-    animation: sectionIn 500ms var(--ease-out-expo) both;
-    width: 100%;
-  }
-
-  .top-row {
-    display: flex;
-    flex-direction: column; /* Mobile first */
-    align-items: flex-start; /* Mobile first */
-    gap: 0.6rem;
-    flex-wrap: wrap;
-  }
-
-  @media (min-width: 560px) {
-    .top-row {
-      flex-direction: row;
-      justify-content: space-between;
-      align-items: center;
+    .studio {
+        display: grid;
+        gap: clamp(0.9rem, 2vw, 1.3rem);
     }
-  }
-
-  .back-btn,
-  .mode-pill,
-  .filter-btn,
-  .action-btn,
-  .frame-nav {
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
-  }
-
-  .back-btn {
-    border: 2px solid color-mix(in oklch, var(--teal-deep) 58%, var(--paper));
-    border-radius: 4px;
-    background: color-mix(in oklch, var(--paper) 80%, var(--teal) 20%);
-    color: color-mix(in oklch, var(--teal-deep) 78%, var(--ink));
-    padding: 0.45rem 0.88rem;
-    min-height: 44px; /* Touch target */
-  }
-
-  .mode-pill {
-    border: 1px solid color-mix(in oklch, var(--ink) 24%, var(--paper));
-    border-radius: 2px;
-    padding: 0.36rem 0.7rem;
-    background: color-mix(in oklch, var(--paper) 86%, var(--sun) 14%);
-    color: color-mix(in oklch, var(--ink-soft) 78%, var(--ink));
-    font-size: 0.74rem;
-    animation: pillPulse 2200ms ease-in-out infinite;
-    width: 100%; /* Mobile first */
-    text-align: center; /* Mobile first */
-  }
-
-  @media (min-width: 560px) {
-    .mode-pill {
-      width: auto;
-      text-align: left;
-    }
-  }
-
-  .selection-grid {
-    display: grid;
-    grid-template-columns: 1fr; /* Mobile first */
-    gap: clamp(0.8rem, 2vw, 1.5rem);
-    align-items: start;
-    container-type: inline-size;
-  }
-
-  @media (min-width: 900px) {
-    .selection-grid {
-      grid-template-columns: minmax(0, 0.84fr) minmax(0, 1.16fr);
-    }
-  }
-
-  .control-column,
-  .preview-column {
-    border: 2px solid color-mix(in oklch, var(--ink) 28%, var(--paper));
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--paper) 92%, var(--sun) 8%);
-    padding: clamp(0.85rem, 2vw, 1.3rem);
-    box-shadow: 0 16px 24px color-mix(in oklch, var(--ink) 14%, transparent);
-    animation: panelRise 560ms var(--ease-out-quint) both;
-  }
-
-  .control-column {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .control-column::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.22;
-    background-image: repeating-linear-gradient(
-      -25deg,
-      color-mix(in oklch, var(--ink) 14%, transparent) 0 1px,
-      transparent 1px 15px
-    );
-  }
-
-  .control-column > * {
-    position: relative;
-    z-index: 1;
-  }
-
-  .preview-column {
-    animation-delay: 90ms;
-    display: grid;
-    justify-items: center;
-    gap: 0.6rem;
-    background: linear-gradient(170deg, color-mix(in oklch, var(--paper) 86%, var(--teal) 14%), color-mix(in oklch, var(--paper-soft) 78%, var(--sun) 22%));
-  }
-
-  h2 {
-    font-size: clamp(1.7rem, 2vw, 3.1rem);
-    line-height: 0.9;
-    color: color-mix(in oklch, var(--brick-deep) 64%, var(--ink));
-    text-wrap: balance;
-    margin-bottom: 0.35rem;
-  }
-
-  .control-subtitle {
-    color: color-mix(in oklch, var(--ink-soft) 75%, var(--ink));
-    font-size: clamp(1rem, 1.8vw, 1.12rem);
-    line-height: 1.34;
-    margin-bottom: 0.85rem;
-    max-width: 44ch;
-  }
-
-  .delight-note {
-    width: fit-content;
-    max-width: 100%;
-    border: 1px dashed color-mix(in oklch, var(--teal-deep) 38%, var(--paper));
-    border-radius: 4px;
-    background: color-mix(in oklch, var(--paper) 86%, var(--teal) 14%);
-    color: color-mix(in oklch, var(--teal-deep) 74%, var(--ink));
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-size: 0.66rem;
-    line-height: 1.25;
-    padding: 0.3rem 0.6rem;
-    animation: hintIn 280ms var(--ease-out-quart);
-  }
-
-  .frame-picker {
-    margin-top: 0.75rem;
-    border: 2px solid color-mix(in oklch, var(--ink) 20%, var(--paper));
-    border-radius: 6px;
-    padding: 0.7rem;
-    display: grid;
-    grid-template-columns: 1fr; /* Mobile first */
-    justify-items: start; /* Mobile first */
-    align-items: center;
-    gap: 0.6rem;
-    background: color-mix(in oklch, var(--paper-soft) 80%, var(--teal) 20%);
-    grid-template-columns: auto 1fr auto;
-  }
-
-  @media (min-width: 560px) {
-    .frame-picker {
-      justify-items: stretch;
-    }
-  }
-
-  .frame-nav {
-    width: 38px;
-    height: 38px;
-    border: 2px solid color-mix(in oklch, var(--ink) 22%, var(--paper));
-    border-radius: 50%;
-    background: color-mix(in oklch, var(--paper) 92%, var(--sun) 8%);
-    font-size: 1.2rem;
-    color: var(--ink);
-    transition: transform 180ms var(--ease-out-quart), box-shadow 180ms var(--ease-out-quart);
-    min-height: 44px;
-    min-width: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  @media (hover: hover) {
-    .frame-nav:hover:not(:disabled) {
-      transform: translateY(-1px);
-      box-shadow: 0 7px 12px color-mix(in oklch, var(--ink) 14%, transparent);
-    }
-  }
-
-  .frame-nav:disabled {
-    opacity: 0.44;
-    cursor: not-allowed;
-  }
-
-  .frame-info {
-    display: grid;
-    gap: 0.22rem;
-  }
-
-  .frame-icon {
-    width: fit-content;
-    padding: 0.4rem;
-    border-radius: 4px;
-    background: color-mix(in oklch, var(--brick) 78%, var(--paper));
-    color: var(--paper);
-    font-size: 1.25rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .frame-name {
-    font-family: var(--font-display);
-    font-size: 1.36rem;
-    line-height: 0.95;
-    color: color-mix(in oklch, var(--brick-deep) 66%, var(--ink));
-  }
-
-  .emoji-input-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.2rem;
-  }
-
-  .emoji-input-wrap label {
-    font-size: 0.85rem;
-    color: var(--ink-soft);
-  }
-
-  .emoji-input {
-    width: 3rem;
-    font-size: 1.25rem;
-    text-align: center;
-    border: 2px dashed color-mix(in oklch, var(--brick) 40%, var(--paper));
-    border-radius: 4px;
-    background: color-mix(in oklch, var(--paper) 90%, var(--ink));
-    padding: 0.2rem;
-  }
-
-  .emoji-input:focus {
-    outline: none;
-    border-color: var(--teal);
-  }
-
-  .color-input {
-    width: 2rem;
-    height: 2rem;
-    border: none;
-    border-radius: 4px;
-    background: none;
-    cursor: pointer;
-    padding: 0;
-  }
-
-  .color-input::-webkit-color-swatch-wrapper {
-    padding: 0;
-  }
-
-  .color-input::-webkit-color-swatch {
-    border: 2px dashed color-mix(in oklch, var(--brick) 40%, var(--paper));
-    border-radius: 4px;
-  }
-
-  .frame-note {
-    color: color-mix(in oklch, var(--ink-soft) 74%, var(--ink));
-    font-size: 0.9rem;
-    line-height: 1.25;
-  }
-
-  .frame-reaction {
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-size: 0.62rem;
-    color: color-mix(in oklch, var(--teal-deep) 66%, var(--ink));
-  }
-
-  .filter-group {
-    margin-top: 0.75rem;
-    display: inline-flex;
-    border: 1px solid color-mix(in oklch, var(--ink) 20%, var(--paper));
-    border-radius: 3px;
-    padding: 0.2rem;
-    background: color-mix(in oklch, var(--paper) 92%, var(--ink) 8%);
-  }
-
-  .filter-btn {
-    border: 0;
-    border-radius: 2px;
-    padding: 0.36rem 0.75rem;
-    font-size: 0.74rem;
-    background: transparent;
-    color: color-mix(in oklch, var(--ink-soft) 72%, var(--ink));
-    min-height: 44px; /* Touch target */
-  }
-
-  .filter-btn.active {
-    background: color-mix(in oklch, var(--teal) 64%, var(--paper));
-    color: color-mix(in oklch, var(--teal-deep) 78%, var(--ink));
-  }
-
-  .bottom-label-input {
-    margin-top: 0.75rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .bottom-label-input label {
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-size: 0.7rem;
-    color: color-mix(in oklch, var(--ink-soft) 72%, var(--ink));
-  }
-
-  .bottom-label-input input {
-    font-family: var(--font-ui);
-    font-size: 0.9rem;
-    padding: 0.4rem 0.6rem;
-    border: 1px solid color-mix(in oklch, var(--ink) 20%, var(--paper));
-    border-radius: 3px;
-    background: color-mix(in oklch, var(--paper) 95%, var(--ink));
-    color: var(--ink);
-  }
-
-  .bottom-label-input input:focus {
-    outline: none;
-    border-color: var(--teal);
-    box-shadow: 0 0 0 2px color-mix(in oklch, var(--teal) 30%, transparent);
-  }
-
-  .meta-row {
-    margin-top: 0.72rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-
-  .meta-row p {
-    border: 1px solid color-mix(in oklch, var(--ink) 16%, var(--paper));
-    border-radius: 3px;
-    background: color-mix(in oklch, var(--paper) 90%, var(--teal) 10%);
-    color: color-mix(in oklch, var(--ink-soft) 76%, var(--ink));
-    padding: 0.23rem 0.46rem;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
-  }
-
-  .actions {
-    margin-top: 0.92rem;
-    display: grid;
-    gap: 0.48rem;
-  }
-
-  .action-btn {
-    border: 2px solid color-mix(in oklch, var(--ink) 20%, var(--paper));
-    border-radius: 5px;
-    background: color-mix(in oklch, var(--paper) 92%, var(--sun) 8%);
-    color: var(--ink);
-    padding: 0.6rem 0.82rem;
-    text-align: left;
-    transition: transform 170ms var(--ease-out-quart), box-shadow 170ms var(--ease-out-quart);
-    min-height: 44px; /* Touch target size */
-  }
-
-  @media (hover: hover) {
-    .action-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 14px color-mix(in oklch, var(--ink) 14%, transparent);
-    }
-  }
-
-  .action-btn:active {
-    transform: scale(0.985);
-  }
-
-  .action-btn:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-  }
-
-  .reorder-panel {
-    background: color-mix(in oklch, var(--paper) 95%, var(--ink));
-    border: 1px dashed color-mix(in oklch, var(--ink) 24%, var(--paper));
-    border-radius: 4px;
-    padding: 0.6rem;
-    margin-bottom: 0.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-  }
-
-  .reorder-title {
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-size: 0.65rem;
-    color: var(--ink-soft);
-  }
-
-  .reorder-track {
-    display: flex;
-    gap: 0.3rem;
-    justify-content: space-between;
-  }
-
-  .reorder-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.3rem;
-    background: color-mix(in oklch, var(--paper-soft) 80%, var(--teal) 20%);
-    border: 1px solid color-mix(in oklch, var(--ink) 15%, var(--paper));
-    border-radius: 3px;
-    padding: 0.3rem;
-    flex: 1;
-  }
-
-  .tiny-thumb {
-    width: 100%;
-    aspect-ratio: 3/4;
-    object-fit: cover;
-    border-radius: 2px;
-    border: 1px solid color-mix(in oklch, var(--ink) 30%, transparent);
-    background: var(--ink);
-  }
-
-  .reorder-num {
-    font-family: var(--font-ui);
-    font-weight: 700;
-    font-size: 0.65rem;
-    color: var(--teal-deep);
-  }
-
-  .reorder-actions {
-    display: flex;
-    gap: 0.2rem;
-    width: 100%;
-    justify-content: center;
-  }
-
-  .reorder-btn {
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid color-mix(in oklch, var(--ink) 18%, var(--paper));
-    border-radius: 2px;
-    background: color-mix(in oklch, var(--paper) 80%, var(--sun) 20%);
-    color: var(--ink);
-    cursor: pointer;
-  }
-
-  .reorder-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-  }
-
-  .action-primary {
-    background: linear-gradient(180deg, color-mix(in oklch, var(--brick) 86%, var(--paper)), color-mix(in oklch, var(--brick-deep) 74%, var(--ink)));
-    color: var(--paper);
-  }
-
-  .frame-preview {
-    width: min(360px, 100%); /* Mobile */
-    min-height: 520px; /* Mobile */
-    border: 3px solid color-mix(in oklch, var(--ink) 28%, var(--paper));
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--paper) 95%, var(--ink) 5%);
-    padding: 0.82rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    overflow: hidden;
-    box-shadow: 0 18px 24px color-mix(in oklch, var(--ink) 18%, transparent);
-  }
-
-  @media (min-width: 900px) {
-    .frame-preview {
-      width: min(340px, 100%);
-      min-height: clamp(530px, 70vh, 640px);
-    }
-  }
-
-  .preview-top {
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.11em;
-    font-size: 0.69rem;
-    color: color-mix(in oklch, var(--ink-soft) 76%, var(--ink));
-    margin-bottom: 0.56rem;
-  }
-
-  .preview-sticker {
-    align-self: flex-end;
-    margin-bottom: 0.42rem;
-    border: 1px solid color-mix(in oklch, var(--brick-deep) 46%, var(--paper));
-    border-radius: 3px;
-    background: color-mix(in oklch, var(--brick) 80%, var(--paper));
-    color: var(--paper);
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    font-size: 0.58rem;
-    padding: 0.22rem 0.5rem;
-    transform: rotate(-3deg);
-    animation: stickerPulse 2400ms ease-in-out infinite;
-  }
-
-  .strip-preview-shell {
-    width: 100%;
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    perspective: 760px;
-    overflow: hidden;
-    padding-inline: 0.42rem;
-  }
-
-  .preview-strip-image {
-    width: min(150px, 50%); /* Mobile */
-    max-height: 100%;
-    object-fit: contain;
-    transform-origin: center center;
-    transform: translateX(4px) rotate(-2.4deg);
-    filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.3));
-    transition: transform 260ms var(--ease-out-quint), filter 260ms var(--ease-out-quint);
-    animation: previewStripIn 530ms var(--ease-out-expo) both, previewStripFloat 4200ms ease-in-out 560ms infinite;
-  }
-
-  @media (min-width: 560px) {
-    .preview-strip-image {
-      width: min(126px, 50%);
-    }
-  }
-
-  @media (hover: hover) {
-    .preview-strip-image:hover {
-      transform: translateX(4px) rotate(-1.1deg) translateY(-3px) scale(1.01);
-      filter: drop-shadow(0 16px 22px rgba(0, 0, 0, 0.34));
-    }
-  }
-
-  .preview-loading {
-    border: 1px dashed color-mix(in oklch, var(--ink) 24%, var(--paper));
-    border-radius: 5px;
-    padding: 0.54rem 0.7rem;
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
-    font-size: 0.7rem;
-    color: color-mix(in oklch, var(--ink-soft) 74%, var(--ink));
-  }
-
-  .upload-hint {
-    margin-top: 0.34rem;
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-size: 0.65rem;
-    color: color-mix(in oklch, var(--ink-soft) 74%, var(--ink));
-    animation: hintIn 260ms var(--ease-out-quart);
-  }
-
-  .inline-camera {
-    position: relative;
-    width: 100%;
-    flex: 1;
-    min-height: 292px; /* Mobile first */
-    border: 2px solid color-mix(in oklch, var(--ink) 40%, var(--paper));
-    border-radius: 6px;
-    overflow: hidden;
-    background: color-mix(in oklch, var(--ink) 88%, var(--paper));
-  }
-
-  @media (min-width: 560px) {
-    .inline-camera {
-      min-height: 314px;
-    }
-  }
-
-  video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transform: scaleX(-1);
-  }
-
-  .overlay-note,
-  .countdown-overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .overlay-note {
-    background: color-mix(in oklch, var(--ink) 74%, transparent);
-    color: color-mix(in oklch, var(--paper) 84%, var(--teal));
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-size: 0.75rem;
-  }
-
-  .countdown-overlay {
-    background: color-mix(in oklch, var(--ink) 24%, transparent);
-  }
-
-  .countdown-overlay span {
-    width: 88px;
-    aspect-ratio: 1;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    border: 3px solid color-mix(in oklch, var(--paper) 74%, var(--sun));
-    background: color-mix(in oklch, var(--ink) 54%, transparent);
-    color: var(--paper);
-    font-family: var(--font-display);
-    font-size: 2.3rem;
-    animation: pop 320ms var(--ease-out-quint);
-  }
-
-  .flash-overlay {
-    position: absolute;
-    inset: 0;
-    background: color-mix(in oklch, var(--paper) 92%, var(--sun) 8%);
-    animation: flash 190ms ease-out forwards;
-  }
-
-  .camera-status {
-    margin-top: 0.52rem;
-    text-align: center;
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.11em;
-    font-size: 0.7rem;
-    color: color-mix(in oklch, var(--ink-soft) 78%, var(--ink));
-  }
-
-  .camera-tip {
-    text-align: center;
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
-    font-size: 0.61rem;
-    color: color-mix(in oklch, var(--teal-deep) 68%, var(--ink));
-  }
-
-  .preview-meta {
-    text-align: center;
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-size: 0.7rem;
-    color: color-mix(in oklch, var(--ink-soft) 78%, var(--ink));
-  }
-
-  @keyframes sectionIn {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
+    .studio-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.8rem;
     }
 
-    to {
-      opacity: 1;
-      transform: translateY(0);
+    .chip-btn {
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 0.62rem;
+        padding: 0.5rem 0.85rem;
+        border-radius: 8px;
+        color: var(--ink);
+        background: color-mix(in oklch, var(--enamel-2) 80%, transparent);
+        box-shadow: inset 0 0 0 1px
+            color-mix(in oklch, var(--ink) 18%, transparent);
+        min-height: 40px;
+        transition: transform 160ms;
     }
-  }
-
-  @keyframes panelRise {
-    from {
-      opacity: 0;
-      transform: translateY(10px) scale(0.993);
+    .chip-btn:hover {
+        transform: translateY(-1px);
     }
-
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-
-  @keyframes previewStripIn {
-    from {
-      opacity: 0;
-      transform: translateX(4px) rotate(-1deg) translateY(10px) scale(0.97);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateX(4px) rotate(-2.4deg) translateY(0) scale(1);
-    }
-  }
-
-  @keyframes previewStripFloat {
-    0%,
-    100% {
-      transform: translateX(4px) rotate(-2.4deg) translateY(0);
+    .mode-tab {
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 0.6rem;
+        color: color-mix(in oklch, var(--primary) 76%, var(--ink));
+        padding: 0.42rem 0.8rem;
+        border-radius: 999px;
+        background: color-mix(in oklch, var(--primary) 12%, transparent);
+        box-shadow: inset 0 0 0 1px
+            color-mix(in oklch, var(--primary) 26%, transparent);
     }
 
-    50% {
-      transform: translateX(4px) rotate(-1.8deg) translateY(-4px);
+    .studio-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: clamp(1rem, 2.4vw, 1.5rem);
+        align-items: start;
     }
-  }
-
-  @keyframes hintIn {
-    from {
-      opacity: 0;
-      transform: translateY(4px);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes pillPulse {
-    0%,
-    100% {
-      transform: translateY(0);
-      box-shadow: 0 0 0 color-mix(in oklch, var(--teal) 0%, transparent);
+    @media (min-width: 900px) {
+        .studio-grid {
+            grid-template-columns: 0.82fr 1.18fr;
+        }
     }
 
-    50% {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 8px color-mix(in oklch, var(--teal) 16%, transparent);
+    .console {
+        position: relative;
+        border-radius: var(--radius-panel);
+        padding: clamp(1rem, 2.4vw, 1.5rem);
+        background: linear-gradient(
+            180deg,
+            color-mix(in oklch, var(--enamel) 96%, var(--brass) 4%),
+            var(--enamel-2)
+        );
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.7),
+            0 18px 30px -18px rgba(0, 0, 0, 0.5),
+            inset 0 0 0 1px color-mix(in oklch, var(--ink) 10%, transparent);
+        display: grid;
+        gap: 0.85rem;
     }
-  }
-
-  @keyframes stickerPulse {
-    0%,
-    100% {
-      transform: rotate(-3deg) translateY(0);
+    .console :global(h2) {
+        font-size: clamp(1.6rem, 2.4vw, 2.3rem);
     }
-
-    50% {
-      transform: rotate(-1deg) translateY(-1px);
-    }
-  }
-
-  @keyframes pop {
-    from {
-      transform: scale(1.12);
-      opacity: 0;
-    }
-
-    to {
-      transform: scale(1);
-      opacity: 1;
-    }
-  }
-
-  @keyframes flash {
-    from {
-      opacity: 1;
+    .console-hint {
+        width: fit-content;
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: 0.58rem;
+        line-height: 1.4;
+        color: color-mix(in oklch, var(--primary) 70%, var(--ink));
+        padding: 0.3rem 0.6rem;
+        border-radius: 6px;
+        background: color-mix(in oklch, var(--primary) 9%, transparent);
     }
 
-    to {
-      opacity: 0;
+    .dial {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 0.7rem;
+        padding: 0.7rem;
+        border-radius: 12px;
+        background: linear-gradient(
+            180deg,
+            color-mix(in oklch, var(--wood) 18%, var(--enamel)),
+            color-mix(in oklch, var(--wood) 10%, var(--enamel-2))
+        );
+        box-shadow:
+            inset 0 0 0 1px color-mix(in oklch, var(--ink) 14%, transparent),
+            inset 0 2px 4px rgba(0, 0, 0, 0.12);
     }
-  }
+    .dial-arrow {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 1.3rem;
+        color: var(--ink);
+        background: radial-gradient(
+            circle at 38% 30%,
+            var(--brass),
+            var(--brass-2) 60%,
+            var(--brass-d)
+        );
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.5),
+            0 3px 6px -2px rgba(0, 0, 0, 0.5);
+        transition: transform 150ms;
+    }
+    .dial-arrow:hover:not(:disabled) {
+        transform: scale(1.06);
+    }
+    .dial-arrow:active:not(:disabled) {
+        transform: scale(0.96);
+    }
+    .dial-arrow:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+    .dial-face {
+        text-align: center;
+        display: grid;
+        gap: 0.15rem;
+    }
+    .dial-name {
+        font-family: var(--font-sign);
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 1.2rem;
+        letter-spacing: 0.02em;
+        color: var(--ink);
+    }
+    .dial-note {
+        font-family: var(--font-body);
+        font-size: 0.86rem;
+        line-height: 1.25;
+        color: var(--ink-soft);
+    }
+    .dial-reaction {
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: 0.52rem;
+        color: color-mix(in oklch, var(--primary) 68%, var(--ink));
+    }
+    .dial-custom {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6rem;
+        margin-top: 0.2rem;
+    }
+    .dial-custom label {
+        font-family: var(--font-mono);
+        font-size: 0.56rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--ink-soft);
+    }
+    .emoji-in {
+        width: 3rem;
+        font-size: 1.2rem;
+        text-align: center;
+        padding: 0.2rem;
+        border-radius: 6px;
+        border: 1.5px solid color-mix(in oklch, var(--ink) 24%, transparent);
+        background: var(--enamel);
+        color: var(--ink);
+    }
+    .color-in {
+        width: 2rem;
+        height: 2rem;
+        border: none;
+        background: none;
+        padding: 0;
+        cursor: pointer;
+    }
 
-  @media (prefers-reduced-motion: reduce) {
-    .mode-pill,
-    .preview-strip-image,
-    .preview-sticker,
-    .delight-note,
-    .upload-hint {
-      animation: none;
-      transition: none;
+    .switch-row {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
     }
-  }
+    .switch-label {
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.58rem;
+        color: var(--ink-soft);
+    }
+    .film-toggle {
+        position: relative;
+        display: inline-grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2px;
+        padding: 3px;
+        border-radius: 999px;
+        background: color-mix(in oklch, var(--wood) 22%, var(--enamel-2));
+        box-shadow:
+            inset 0 2px 4px rgba(0, 0, 0, 0.2),
+            inset 0 0 0 1px color-mix(in oklch, var(--ink) 16%, transparent);
+    }
+    .film-toggle button {
+        position: relative;
+        z-index: 1;
+        font-family: var(--font-sign);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: 0.82rem;
+        padding: 0.4rem 1.1rem;
+        border-radius: 999px;
+        color: var(--ink-soft);
+        min-height: 38px;
+        transition: color 200ms;
+    }
+    .film-toggle button.on {
+        color: var(--on-dark);
+    }
+    .knob {
+        position: absolute;
+        z-index: 0;
+        top: 3px;
+        bottom: 3px;
+        left: 3px;
+        width: calc(50% - 4px);
+        border-radius: 999px;
+        background: linear-gradient(180deg, var(--primary-l), var(--primary-d));
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.25),
+            0 2px 5px -1px rgba(0, 0, 0, 0.4);
+        transition: transform 240ms var(--ease-out-quint);
+    }
+
+    .field :global(label) {
+        display: block;
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.56rem;
+        color: var(--ink-soft);
+        margin-bottom: 0.3rem;
+    }
+    .emboss-input {
+        width: 100%;
+        font-family: var(--font-mono);
+        font-size: 0.92rem;
+        padding: 0.55rem 0.7rem;
+        border-radius: 8px;
+        color: var(--ink);
+        border: none;
+        background: color-mix(in oklch, var(--enamel-2) 70%, var(--wood) 8%);
+        box-shadow:
+            inset 0 2px 4px rgba(0, 0, 0, 0.16),
+            inset 0 0 0 1px color-mix(in oklch, var(--ink) 14%, transparent);
+    }
+    .emboss-input:focus {
+        outline: none;
+        box-shadow:
+            inset 0 2px 4px rgba(0, 0, 0, 0.16),
+            0 0 0 2px var(--glow);
+    }
+
+    .meta-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+    }
+    .meta-chips span {
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: 0.54rem;
+        color: var(--ink-soft);
+        padding: 0.26rem 0.5rem;
+        border-radius: 5px;
+        background: color-mix(in oklch, var(--enamel-2) 76%, transparent);
+        box-shadow: inset 0 0 0 1px
+            color-mix(in oklch, var(--ink) 12%, transparent);
+    }
+
+    .console-actions {
+        display: grid;
+        gap: 0.5rem;
+        margin-top: 0.2rem;
+    }
+    .btn--capture {
+        font-size: 1.05rem;
+        padding: 0.95rem 1.5rem;
+        position: relative;
+        overflow: hidden;
+    }
+    .btn--capture::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -40%;
+        width: 40%;
+        height: 100%;
+        background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(255, 255, 255, 0.35),
+            transparent
+        );
+        animation: sheen 3.2s ease-in-out infinite;
+    }
+
+    .reorder {
+        display: grid;
+        gap: 0.5rem;
+        padding: 0.7rem;
+        border-radius: 10px;
+        background: color-mix(in oklch, var(--enamel-2) 70%, transparent);
+        box-shadow: inset 0 0 0 1px
+            color-mix(in oklch, var(--ink) 12%, transparent);
+    }
+    .reorder-title {
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.54rem;
+        color: var(--ink-soft);
+    }
+    .reorder-track {
+        display: flex;
+        gap: 0.4rem;
+    }
+    .reorder-item {
+        flex: 1;
+        display: grid;
+        gap: 0.3rem;
+        justify-items: center;
+        padding: 0.3rem;
+        border-radius: 7px;
+        background: var(--enamel);
+        box-shadow: inset 0 0 0 1px
+            color-mix(in oklch, var(--ink) 12%, transparent);
+    }
+    .reorder-item img {
+        width: 100%;
+        aspect-ratio: 3/4;
+        object-fit: cover;
+        border-radius: 3px;
+        background: var(--ink);
+    }
+    .reorder-item .n {
+        font-family: var(--font-mono);
+        font-weight: 600;
+        font-size: 0.56rem;
+        color: var(--primary);
+    }
+    .reorder-actions {
+        display: flex;
+        gap: 0.25rem;
+    }
+    .reorder-actions button {
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        border-radius: 5px;
+        background: linear-gradient(180deg, var(--brass), var(--brass-d));
+        color: var(--wood-d);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    }
+    .reorder-actions button:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+    }
+    .replace-btn {
+        background: linear-gradient(180deg, var(--primary-l), var(--primary-d)) !important;
+        color: var(--on-dark) !important;
+        font-size: 0.9rem;
+    }
+
+    .monitor {
+        display: grid;
+        justify-items: center;
+        gap: 0.7rem;
+    }
+    .monitor-bezel {
+        width: min(420px, 100%);
+        border-radius: 18px;
+        padding: clamp(0.9rem, 2vw, 1.3rem);
+        background: linear-gradient(165deg, #2a2622, #14110e);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.08),
+            0 28px 50px -22px rgba(0, 0, 0, 0.75),
+            inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+        display: grid;
+        gap: 0.7rem;
+    }
+    .monitor-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 0.54rem;
+        color: color-mix(in oklch, var(--on-dark) 66%, transparent);
+    }
+    .monitor-sticker {
+        align-self: center;
+        font-family: var(--font-sign);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.62rem;
+        color: var(--on-dark);
+        padding: 0.18rem 0.5rem;
+        border-radius: 4px;
+        background: linear-gradient(180deg, var(--primary-l), var(--primary-d));
+        transform: rotate(-3deg);
+    }
+    .monitor-screen {
+        position: relative;
+        border-radius: 10px;
+        height: clamp(340px, 70vh, 750px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        background:
+            radial-gradient(
+                120% 80% at 50% 0%,
+                rgba(255, 255, 255, 0.05),
+                transparent 55%
+            ),
+            linear-gradient(180deg, #e8e2d6, #d8d0c2);
+        box-shadow: inset 0 4px 16px rgba(0, 0, 0, 0.28);
+        overflow: hidden;
+    }
+    .monitor-screen.live {
+        background: #000;
+    }
+    .preview-strip {
+        max-height: 100%;
+        width: auto;
+        object-fit: contain;
+        filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.4));
+        transform: rotate(-2deg);
+        animation: floatStrip 4.5s ease-in-out infinite;
+    }
+    .monitor-foot {
+        text-align: center;
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 0.54rem;
+        color: color-mix(in oklch, var(--on-dark) 60%, transparent);
+    }
+
+    .cam {
+        position: absolute;
+        inset: 0;
+    }
+    .cam video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform: scaleX(-1);
+    }
+    .cam-overlay {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+    }
+    .cam-note {
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 0.7rem;
+        color: var(--on-dark);
+        background: rgba(0, 0, 0, 0.6);
+        padding: 0.5rem 0.9rem;
+        border-radius: 8px;
+    }
+    .count-ring {
+        width: 92px;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        border: 3px solid color-mix(in oklch, var(--glow) 80%, #fff);
+        background: rgba(0, 0, 0, 0.45);
+        color: #fff;
+        font-family: var(--font-sign);
+        font-weight: 600;
+        font-size: 2.6rem;
+        animation: pop 320ms var(--ease-out-quint);
+    }
+    .flash {
+        position: absolute;
+        inset: 0;
+        background: #fff;
+        animation: flash 190ms ease-out forwards;
+    }
+    .cam-brackets b {
+        position: absolute;
+        width: 26px;
+        height: 26px;
+        border: 2px solid rgba(255, 255, 255, 0.7);
+    }
+    .cam-brackets b.tl {
+        top: 12px;
+        left: 12px;
+        border-right: none;
+        border-bottom: none;
+    }
+    .cam-brackets b.tr {
+        top: 12px;
+        right: 12px;
+        border-left: none;
+        border-bottom: none;
+    }
+    .cam-brackets b.bl {
+        bottom: 12px;
+        left: 12px;
+        border-right: none;
+        border-top: none;
+    }
+    .cam-brackets b.br {
+        bottom: 12px;
+        right: 12px;
+        border-left: none;
+        border-top: none;
+    }
+
+    @keyframes floatStrip {
+        0%,
+        100% {
+            transform: rotate(-2deg) translateY(0);
+        }
+        50% {
+            transform: rotate(-1.2deg) translateY(-5px);
+        }
+    }
+    @keyframes sheen {
+        0% {
+            left: -40%;
+        }
+        55%,
+        100% {
+            left: 130%;
+        }
+    }
+    @keyframes pop {
+        from {
+            transform: scale(1.2);
+            opacity: 0;
+        }
+        to {
+            transform: scale(1);
+            opacity: 1;
+        }
+    }
+    @keyframes flash {
+        from {
+            opacity: 1;
+        }
+        to {
+            opacity: 0;
+        }
+    }
 </style>

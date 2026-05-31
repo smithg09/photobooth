@@ -1,524 +1,169 @@
 <script>
-  import { onDestroy, onMount } from 'svelte';
-  import { currentPage, currentResultId, finalStrip, photos } from './store.js';
+  import { onMount, onDestroy } from 'svelte';
   import { getStripById } from './strip-db.js';
 
-  let toastMessage = '';
-  let toastTimer;
-  let confettiTimer;
-  let celebrate = true;
-  let confettiPieces = [];
-  let celebrationNote = '';
+  export let go;
+  export let finalStrip;
+  export let setFinalStrip;
+  export let resultId;
+  export let setResultId;
+  export let setPhotos;
 
-  const celebrationLines = [
+  const CELEBRATION = [
     'Fresh out of the booth. Certified fridge-door material.',
     'Four frames, one tiny time capsule.',
     'Nostalgia processed successfully. No retakes required.',
-    'Proof that your camera roll still has classics left in it.'
+    'Proof your camera roll still has classics in it.',
   ];
 
-  function buildConfettiPieces() {
-    return Array.from({ length: 16 }, (_, index) => ({
-      id: index,
+  function buildConfetti() {
+    return Array.from({ length: 16 }, (_, i) => ({
+      id: i,
       x: Math.round(8 + Math.random() * 84),
       delay: Math.round(Math.random() * 320),
       drift: Math.round(-24 + Math.random() * 48),
       rot: Math.round(-28 + Math.random() * 56),
-      tone: index % 2 === 0 ? 'var(--teal)' : 'var(--brick)'
+      tone: i % 2 === 0 ? 'var(--glow)' : 'var(--primary)',
     }));
   }
 
-  onMount(async () => {
+  let toast = '';
+  let celebrate = true;
+  let pieces = [];
+  let note = '';
+  let toastTimer = null;
+
+  onMount(() => {
     const now = new Date();
-    celebrationNote = celebrationLines[(now.getDate() + now.getMonth()) % celebrationLines.length];
-    confettiPieces = buildConfettiPieces();
-    confettiTimer = setTimeout(() => {
-      celebrate = false;
-    }, 1300);
+    note = CELEBRATION[(now.getDate() + now.getMonth()) % CELEBRATION.length];
+    pieces = buildConfetti();
+    const t = setTimeout(() => { celebrate = false; }, 1300);
 
-    if ($finalStrip || !$currentResultId) return;
-
-    try {
-      const strip = await getStripById($currentResultId);
-      if (strip?.dataUrl) {
-        finalStrip.set(strip.dataUrl);
-      } else {
-        currentPage.set('landing');
-      }
-    } catch (error) {
-      currentPage.set('landing');
-    }
-  });
-
-  onDestroy(() => {
-    clearTimeout(toastTimer);
-    clearTimeout(confettiTimer);
-  });
-
-  function showToast(message) {
-    toastMessage = message;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      toastMessage = '';
-    }, 2200);
-  }
-
-  function downloadStrip() {
-    if (!$finalStrip) return;
-    const link = document.createElement('a');
-    link.download = 'flashback-strip.png';
-    link.href = $finalStrip;
-    link.click();
-  }
-
-  function printStrip() {
-    if (!$finalStrip) return;
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      showToast('Popup blocked. Please allow popups to print.');
-      return;
+    if (!finalStrip && resultId) {
+      getStripById(resultId).then((s) => {
+        if (s?.dataUrl) setFinalStrip(s.dataUrl);
+        else go('lobby');
+      }).catch(() => go('lobby'));
     }
 
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Flashback Strip</title>
-          <style>
-            body {
-              margin: 0;
-              min-height: 100vh;
-              display: grid;
-              place-items: center;
-              background: #110022;
-            }
-            img {
-              max-height: 95vh;
-              box-shadow: 0 12px 26px rgba(0, 0, 0, 0.2);
-            }
-          </style>
-        </head>
-        <body>
-          <img src="${$finalStrip}" alt="Photobooth strip" />
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 400);
+    return () => { clearTimeout(t); clearTimeout(toastTimer); };
+  });
+
+  onDestroy(() => { clearTimeout(toastTimer); });
+
+  function showToast(m) {
+    toast = m;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast = ''; }, 2200);
   }
 
-  async function shareStrip() {
-    if (!$finalStrip) return;
+  function download() {
+    if (!finalStrip) return;
+    const a = document.createElement('a');
+    a.download = 'flashback-strip.png'; a.href = finalStrip; a.click();
+  }
 
+  function print() {
+    if (!finalStrip) return;
+    const w = window.open('', '_blank');
+    if (!w) { showToast('Popup blocked — allow popups to print.'); return; }
+    w.document.write(`<html><head><title>Flashback Strip</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#15110d}img{max-height:95vh;box-shadow:0 12px 26px rgba(0,0,0,0.4)}</style></head><body><img src="${finalStrip}" alt="Photobooth strip" /></body></html>`);
+    w.document.close(); w.focus(); setTimeout(() => w.print(), 400);
+  }
+
+  async function share() {
+    if (!finalStrip) return;
     if (navigator.share && navigator.canShare) {
       try {
-        const response = await fetch($finalStrip);
-        const blob = await response.blob();
+        const res = await fetch(finalStrip); const blob = await res.blob();
         const file = new File([blob], 'flashback-strip.png', { type: 'image/png' });
-
         if (navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: 'My Flashback Booth strip'
-          });
-          showToast('Shared successfully.');
-          return;
+          await navigator.share({ files: [file], title: 'My Flashback Booth strip' });
+          showToast('Shared.'); return;
         }
-      } catch (error) {
-        // Fallback handled below.
-      }
+      } catch { /* fall through */ }
     }
-
-    await fallbackShare();
-  }
-
-  async function fallbackShare() {
-    const shareLink = $currentResultId
-      ? `${window.location.origin}${window.location.pathname}#/result/${$currentResultId}`
-      : window.location.href;
-
-    try {
-      await navigator.clipboard.writeText(shareLink);
-      showToast('Share link copied to clipboard.');
-    } catch (error) {
-      showToast('Share is not available in this browser.');
-    }
+    const link = resultId
+      ? `${location.origin}${location.pathname}#/result/${resultId}`
+      : location.href;
+    try { await navigator.clipboard.writeText(link); showToast('Share link copied.'); }
+    catch { showToast('Share is unavailable in this browser.'); }
   }
 
   function restart() {
-    photos.set([]);
-    finalStrip.set(null);
-    currentResultId.set(null);
-    currentPage.set('landing');
+    setPhotos([]); setFinalStrip(null); setResultId(null); go('lobby');
   }
 </script>
 
-<div class="result-page">
-  <header class="pickup-header">
-    <p class="pickup-kicker">Ready For Pickup</p>
-    <h2>Your strip is printed and saved</h2>
-    <p class="celebration-note">{celebrationNote}</p>
-    {#if $currentResultId}
-      <p class="pickup-id">Strip ID: {$currentResultId}</p>
+<div class="screen pickup page-enter">
+  <header class="pickup-head">
+    <p class="eyebrow eyebrow--accent">Ready for pickup</p>
+    <h2 class="display-title">Your strip is printed &amp; saved</h2>
+    <p class="note">{note}</p>
+    {#if resultId}
+      <p class="pickup-id">Strip no. {resultId}</p>
     {/if}
   </header>
 
-  <div class="result-layout">
-    <section class="strip-stage">
-      <div class="pin pin-left"></div>
-      <div class="pin pin-right"></div>
-
+  <div class="pickup-grid">
+    <div class="tray">
+      <span class="tray-pin l"></span>
+      <span class="tray-pin r"></span>
       {#if celebrate}
-        <div class="confetti-layer" aria-hidden="true">
-          {#each confettiPieces as piece}
-            <span
-              class="confetti-dot"
-              style={`--x: ${piece.x}%; --delay: ${piece.delay}ms; --drift: ${piece.drift}px; --rot: ${piece.rot}deg; --tone: ${piece.tone};`}
-            ></span>
+        <div class="confetti" aria-hidden="true">
+          {#each pieces as p (p.id)}
+            <i style="left:{p.x}%; animation-delay:{p.delay}ms; background:color-mix(in oklch, {p.tone} 76%, var(--enamel)); --drift:{p.drift}px; --rot:{p.rot}deg;"></i>
           {/each}
         </div>
       {/if}
-
-      {#if $finalStrip}
-        <img src={$finalStrip} alt="Completed photobooth strip" class="strip-image" />
+      {#if finalStrip}
+        <img class="final-strip" src={finalStrip} alt="Completed photobooth strip" />
       {:else}
-        <div class="strip-placeholder">Loading strip...</div>
+        <span class="preview-loading">Loading strip…</span>
       {/if}
-    </section>
+      <span class="tray-slot"></span>
+    </div>
 
-    <section class="action-panel">
-      <p class="panel-copy">Save it, print it, or share your strip with one tap.</p>
-
-      <button class="action-btn action-primary" on:click={downloadStrip}>Download PNG</button>
-      <button class="action-btn" on:click={printStrip}>Print Strip</button>
-      <button class="action-btn" on:click={shareStrip}>Share</button>
-
-      <button class="restart-btn" on:click={restart}>Back to lobby</button>
-    </section>
+    <div class="pickup-actions">
+      <p class="lead">Save it, print it, or share it with one tap.</p>
+      <button class="btn btn--primary" on:click={download}>Download PNG</button>
+      <button class="btn btn--ghost" on:click={print}>Print strip</button>
+      <button class="btn btn--ghost" on:click={share}>Share</button>
+      <button class="btn btn--brass" on:click={restart}>Back to lobby</button>
+    </div>
   </div>
 
-  {#if toastMessage}
-    <div class="toast" role="status">{toastMessage}</div>
+  {#if toast}
+    <div class="toast" role="status">{toast}</div>
   {/if}
 </div>
 
 <style>
-  .result-page {
-    min-height: 100%;
-    display: grid;
-    align-content: center;
-    gap: clamp(0.9rem, 2.2vw, 1.4rem);
-    padding-block: clamp(0.7rem, 1.8vw, 1.2rem);
-    animation: resultIn 520ms var(--ease-out-expo) both;
-  }
+  .pickup { display: grid; gap: clamp(0.9rem, 2vw, 1.3rem); }
+  .pickup-head { display: grid; gap: 0.4rem; }
+  .pickup-head :global(h2) { font-size: clamp(2rem, 5vw, 3.4rem); }
+  .note { justify-self: start; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.58rem; color: var(--ink-soft); padding: 0.3rem 0.6rem; border-radius: 5px; background: color-mix(in oklch, var(--glow) 14%, transparent); }
+  .pickup-id { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.6rem; color: var(--ink-faint); }
 
-  .pickup-header,
-  .result-layout {
-    border: 2px solid color-mix(in oklch, var(--ink) 28%, var(--paper));
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--paper) 92%, var(--sun) 8%);
-    box-shadow: 0 16px 24px color-mix(in oklch, var(--ink) 14%, transparent);
-    animation: panelIn 540ms var(--ease-out-quint) both;
-  }
+  .pickup-grid { display: grid; grid-template-columns: 1fr; gap: clamp(1rem, 2.4vw, 1.6rem); align-items: start; }
+  @media (min-width: 820px) { .pickup-grid { grid-template-columns: 1fr 0.72fr; } }
 
-  .pickup-header {
-    position: relative;
-    display: grid;
-    gap: 0.32rem;
-    padding: clamp(0.95rem, 2vw, 1.25rem);
-    overflow: hidden;
-  }
+  .tray { position: relative; display: grid; place-items: center; min-height: 360px; padding: clamp(1.4rem, 3vw, 2.2rem) 1rem 2.4rem; border-radius: 14px; background: radial-gradient(120% 70% at 50% 0%, color-mix(in oklch, var(--glow) 12%, transparent), transparent 55%), linear-gradient(180deg, var(--enamel), var(--enamel-2)); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 12%, transparent), inset 0 4px 14px rgba(0,0,0,0.1); overflow: hidden; }
+  .tray-pin { position: absolute; top: 16px; width: 13px; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 38% 32%, var(--brass), var(--brass-d) 70%, var(--wood-d)); box-shadow: inset 0 1px 1px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.5); }
+  .tray-pin.l { left: 22px; } .tray-pin.r { right: 22px; }
+  .tray-slot { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: clamp(180px, 40%, 260px); height: 18px; border-radius: 10px 10px 0 0; background: linear-gradient(180deg, #000, var(--wood-d)); box-shadow: inset 0 4px 8px rgba(0,0,0,0.8); }
+  .final-strip { max-height: min(64vh, 600px); width: auto; border-radius: 4px; box-shadow: 0 22px 34px -10px rgba(0,0,0,0.55); transform: rotate(-2deg); animation: dispense 700ms 100ms var(--ease-out-expo) both; }
+  .final-strip:hover { transform: rotate(-0.6deg) translateY(-3px); transition: transform 240ms var(--ease-out-quint); }
 
-  .pickup-header::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.24;
-    background-image: repeating-linear-gradient(
-      -25deg,
-      color-mix(in oklch, var(--ink) 13%, transparent) 0 1px,
-      transparent 1px 15px
-    );
-  }
+  .pickup-actions { display: grid; gap: 0.55rem; align-content: start; }
+  .lead { font-family: var(--font-body); font-size: 1.05rem; line-height: 1.4; color: var(--ink-soft); margin-bottom: 0.2rem; }
+  .pickup-actions :global(.btn) { width: 100%; justify-content: flex-start; }
 
-  .pickup-header > * {
-    position: relative;
-    z-index: 1;
-  }
+  .confetti { position: absolute; inset: 0; pointer-events: none; }
+  .confetti i { position: absolute; top: -16px; width: 8px; height: 12px; border-radius: 2px; animation: drop 900ms var(--ease-out-quint) forwards; }
 
-  .result-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 0.76fr);
-    gap: clamp(0.82rem, 2.2vw, 1.3rem);
-    padding: clamp(0.9rem, 2vw, 1.3rem);
-    animation-delay: 80ms;
-  }
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 60; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.62rem; color: var(--on-dark); padding: 0.6rem 1rem; border-radius: 8px; background: var(--wood-d); box-shadow: 0 12px 24px -8px rgba(0,0,0,0.6); animation: pageIn 220ms var(--ease-out-quart); }
 
-  .pickup-kicker {
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    color: color-mix(in oklch, var(--teal-deep) 72%, var(--ink));
-    font-size: 0.74rem;
-  }
-
-  h2 {
-    font-size: clamp(1.8rem, 5vw, 3.1rem);
-    line-height: 0.88;
-    color: color-mix(in oklch, var(--brick-deep) 66%, var(--ink));
-    text-wrap: balance;
-  }
-
-  .pickup-id {
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-size: 0.72rem;
-    color: color-mix(in oklch, var(--ink-soft) 74%, var(--ink));
-  }
-
-  .celebration-note {
-    width: fit-content;
-    max-width: 100%;
-    border: 1px dashed color-mix(in oklch, var(--teal-deep) 40%, var(--paper));
-    border-radius: 4px;
-    background: color-mix(in oklch, var(--paper) 86%, var(--teal) 14%);
-    color: color-mix(in oklch, var(--teal-deep) 80%, var(--ink));
-    padding: 0.26rem 0.62rem;
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 0.62rem;
-  }
-
-  .strip-stage {
-    position: relative;
-    display: grid;
-    place-items: center;
-    min-height: 340px;
-    padding: clamp(0.85rem, 2vw, 1.25rem);
-    border: 2px dashed color-mix(in oklch, var(--ink) 24%, var(--paper));
-    border-radius: 6px;
-    background: linear-gradient(168deg, color-mix(in oklch, var(--paper) 84%, var(--teal) 16%), color-mix(in oklch, var(--paper) 76%, var(--sun) 24%));
-    overflow: hidden;
-  }
-
-  .confetti-layer {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-  }
-
-  .confetti-dot {
-    position: absolute;
-    left: var(--x);
-    top: -16px;
-    width: 8px;
-    height: 12px;
-    border-radius: 2px;
-    background: color-mix(in oklch, var(--tone) 74%, var(--paper));
-    animation: confettiDrop 900ms var(--ease-out-quint) forwards;
-    animation-delay: var(--delay);
-  }
-
-  .pin {
-    position: absolute;
-    top: 10px;
-    width: 14px;
-    aspect-ratio: 1;
-    border-radius: 50%;
-    border: 1px solid color-mix(in oklch, var(--brick-deep) 60%, var(--ink));
-    background: color-mix(in oklch, var(--brick) 76%, var(--paper));
-  }
-
-  .pin-left {
-    left: 20px;
-  }
-
-  .pin-right {
-    right: 20px;
-  }
-
-  .strip-image {
-    max-height: min(68vh, 640px);
-    width: auto;
-    border-radius: 4px;
-    box-shadow: 0 20px 28px color-mix(in oklch, var(--ink) 24%, transparent);
-    transform: rotate(-2.1deg);
-    transition: transform 220ms var(--ease-out-quint);
-    animation: stripDrop 600ms 120ms var(--ease-out-expo) both;
-  }
-
-  .strip-image:hover {
-    transform: rotate(-0.8deg) translateY(-3px);
-  }
-
-  .strip-placeholder {
-    width: min(220px, 100%);
-    aspect-ratio: 1 / 1.7;
-    display: grid;
-    place-items: center;
-    border: 1px dashed color-mix(in oklch, var(--ink) 24%, var(--paper));
-    border-radius: 6px;
-    color: color-mix(in oklch, var(--ink-soft) 74%, var(--ink));
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 0.7rem;
-  }
-
-  .action-panel {
-    display: grid;
-    align-content: start;
-    gap: 0.56rem;
-  }
-
-  .panel-copy {
-    color: color-mix(in oklch, var(--ink-soft) 74%, var(--ink));
-    line-height: 1.34;
-  }
-
-  .action-btn,
-  .restart-btn {
-    border: 2px solid color-mix(in oklch, var(--ink) 20%, var(--paper));
-    border-radius: 5px;
-    padding: 0.63rem 0.82rem;
-    text-align: left;
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 0.8rem;
-    background: color-mix(in oklch, var(--paper) 92%, var(--sun) 8%);
-    color: var(--ink);
-    transition: transform 170ms var(--ease-out-quart), box-shadow 170ms var(--ease-out-quart);
-  }
-
-  .action-btn:hover,
-  .restart-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 14px color-mix(in oklch, var(--ink) 14%, transparent);
-  }
-
-  .action-btn:active,
-  .restart-btn:active {
-    transform: scale(0.985);
-  }
-
-  .action-primary {
-    background: linear-gradient(180deg, color-mix(in oklch, var(--brick) 86%, var(--paper)), color-mix(in oklch, var(--brick-deep) 74%, var(--ink)));
-    color: var(--paper);
-  }
-
-  .restart-btn {
-    margin-top: 0.25rem;
-    background: color-mix(in oklch, var(--paper) 84%, var(--teal) 16%);
-    color: color-mix(in oklch, var(--teal-deep) 78%, var(--ink));
-  }
-
-  .toast {
-    position: fixed;
-    left: 50%;
-    bottom: 22px;
-    transform: translateX(-50%);
-    border: 1px solid color-mix(in oklch, var(--ink) 26%, var(--paper));
-    border-radius: 3px;
-    background: color-mix(in oklch, var(--paper) 80%, var(--teal) 20%);
-    color: color-mix(in oklch, var(--teal-deep) 76%, var(--ink));
-    padding: 0.54rem 0.9rem;
-    font-family: var(--font-ui);
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
-    font-size: 0.7rem;
-    box-shadow: 0 10px 16px color-mix(in oklch, var(--ink) 16%, transparent);
-    z-index: 20;
-    animation: toastIn 220ms var(--ease-out-quart);
-  }
-
-  @keyframes resultIn {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes panelIn {
-    from {
-      opacity: 0;
-      transform: translateY(10px) scale(0.994);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-
-  @keyframes stripDrop {
-    from {
-      opacity: 0;
-      transform: rotate(-3deg) translateY(10px) scale(0.98);
-    }
-
-    to {
-      opacity: 1;
-      transform: rotate(-2.1deg) translateY(0) scale(1);
-    }
-  }
-
-  @keyframes toastIn {
-    from {
-      opacity: 0;
-      transform: translateX(-50%) translateY(8px);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-  }
-
-  @keyframes confettiDrop {
-    from {
-      opacity: 0;
-      transform: translateY(-4px) rotate(0deg);
-    }
-
-    12% {
-      opacity: 1;
-    }
-
-    to {
-      opacity: 0;
-      transform: translateY(210px) translateX(var(--drift)) rotate(var(--rot));
-    }
-  }
-
-  @media (max-width: 850px) {
-    .result-layout {
-      grid-template-columns: 1fr;
-    }
-
-    .action-btn,
-    .restart-btn {
-      text-align: center;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .strip-image,
-    .toast,
-    .confetti-dot {
-      animation: none;
-      transition: none;
-    }
-  }
+  @keyframes dispense { from { opacity: 0; transform: rotate(-3deg) translateY(-16px) scale(0.98); } to { opacity: 1; transform: rotate(-2deg) translateY(0) scale(1); } }
+  @keyframes drop { from { opacity: 0; transform: translateY(-4px) rotate(0); } 12% { opacity: 1; } to { opacity: 0; transform: translateY(220px) translateX(var(--drift)) rotate(var(--rot)); } }
 </style>
